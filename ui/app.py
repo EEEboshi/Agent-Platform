@@ -3,17 +3,20 @@
 用户界面模块
 基于 Gradio 构建的 Web 聊天界面，支持流式输出和会话管理
 """
-import gradio as gr
 import sys
 from pathlib import Path
-from core.agent import create_agent
-import uuid
-import logging
-from datetime import datetime
+import os
 
 # 添加项目根目录到 Python 路径
 root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
+os.chdir(str(root_dir))  # 确保工作目录正确
+
+import gradio as gr
+from core.agent import create_agent
+import uuid
+import logging
+from datetime import datetime
 
 # 配置日志
 logging.basicConfig(
