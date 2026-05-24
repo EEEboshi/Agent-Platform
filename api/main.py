@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Dict, Optional
 import uvicorn
-import logging
 import time
 from datetime import datetime
 
@@ -19,17 +18,18 @@ root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
 from core.agent import create_agent
+from core.config import get_settings
+from core.session_store import session_store
+from core.logging_config import setup_logging, get_logger
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# 初始化日志系统
+setup_logging()
+logger = get_logger(__name__)
 
 # 创建 FastAPI 应用
+settings = get_settings()
 app = FastAPI(
-    title="AI Agent Platform API",
+    title=settings.app_name,
     description="多功能 AI 智能体平台的 RESTful API 接口",
     version="1.0.0",
     docs_url="/api/docs",
@@ -39,20 +39,11 @@ app = FastAPI(
 # 配置 CORS（跨域资源共享）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:7860",  # Gradio 默认端口
-        "http://127.0.0.1:7860",
-        "http://localhost:3000",  # 常见前端开发端口
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=settings.server.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],  # 允许所有 HTTP 方法
-    allow_headers=["*"],  # 允许所有 HTTP 头
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
-# 内存级 Session 存储 (生产环境请替换为 Redis)
-# 结构：{ "session_id": agent_instance }
-session_store: Dict[str, any] = {}
 
 class ChatRequest(BaseModel):
     """聊天请求模型"""
@@ -107,7 +98,7 @@ async def health_check():
     return HealthResponse(
         status="healthy",
         timestamp=datetime.now().isoformat(),
-        session_count=len(session_store)
+        session_count=session_store.count
     )
 
 @app.post("/api/chat", response_model=ChatResponse, tags=["聊天"])
@@ -160,8 +151,8 @@ async def reset_session(request: ResetSessionRequest):
         操作结果消息
     """
     try:
-        if request.session_id in session_store:
-            del session_store[request.session_id]
+        if session_store.exists(request.session_id):
+            session_store.delete(request.session_id)
             logger.info(f"会话已重置：{request.session_id}")
             return {"message": f"会话 {request.session_id} 已成功重置", "success": True}
         else:
@@ -178,29 +169,25 @@ async def list_sessions():
     列出所有活跃会话
     """
     return {
-        "count": len(session_store),
-        "sessions": list(session_store.keys())
+        "count": session_store.count,
+        "sessions": session_store.list_all()
     }
 
 def get_or_create_agent(session_id: str):
     """获取现有 Agent 或创建新 Agent"""
-    if session_id not in session_store:
+    if not session_store.exists(session_id):
         logger.info(f"创建新的 agent 会话：{session_id}")
-        session_store[session_id] = create_agent(session_id)
-    return session_store[session_id]
+        session_store.set(session_id, create_agent(session_id))
+    return session_store.get(session_id)
 
 if __name__ == "__main__":
-    # 从环境变量读取配置
-    host = "0.0.0.0"
-    port = int(Path(__file__).parent.parent / ".env" if (Path(__file__).parent.parent / ".env").exists() else 8000)
-    
-    logger.info(f"启动 API 服务器：http://{host}:{port}")
-    logger.info(f"API 文档：http://{host}:{port}/api/docs")
+    logger.info(f"启动 API 服务器：http://{settings.server.host}:{settings.server.port}")
+    logger.info(f"API 文档：http://{settings.server.host}:{settings.server.port}/api/docs")
+    logger.info(f"Session 存储模式：{session_store.store_type}")
     
     uvicorn.run(
         app,
-        host=host,
-        port=8000,
-        log_level="info",
-        access_log=True
+        host=settings.server.host,
+        port=settings.server.port,
+        log_level=settings.log_level.lower()
     )

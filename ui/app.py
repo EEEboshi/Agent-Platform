@@ -10,23 +10,19 @@ import os
 # 添加项目根目录到 Python 路径
 root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
-os.chdir(str(root_dir))  # 确保工作目录正确
+os.chdir(str(root_dir))
 
 import gradio as gr
 from core.agent import create_agent
+from core.logging_config import setup_logging, get_logger
 import uuid
-import logging
 from datetime import datetime
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# 初始化日志系统
+setup_logging()
+logger = get_logger(__name__)
 
 # 存储 Gradio 会话状态的字典
-# 注意：Gradio 的 state 机制在单机版足够用，集群部署需结合 Redis
 user_agents = {}
 
 def get_agent(session_id):

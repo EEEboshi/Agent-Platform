@@ -10,26 +10,45 @@ from llama_index.agent.openai import OpenAIAgent
 from llama_index.core.memory import ChatMemoryBuffer
 from tools import ALL_TOOLS
 import logging
+import httpx
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from core.config import get_settings
+from core.logging_config import setup_logging, get_logger
+
+# 初始化日志系统
+setup_logging()
+logger = get_logger(__name__)
 
 # 加载环境变量
 load_dotenv()
 
+# 全局 httpx 客户端连接池
+_http_client_pool = {}
+
+def get_http_client() -> httpx.Client:
+    """
+    获取或创建 httpx 客户端（连接池复用）
+    避免每次创建新连接，提升性能
+    """
+    client_key = "default"
+    if client_key not in _http_client_pool:
+        settings = get_settings()
+        _http_client_pool[client_key] = httpx.Client(
+            timeout=httpx.Timeout(settings.llm.timeout),
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+            follow_redirects=True,
+        )
+        logger.info("HTTP 客户端连接池已创建")
+    return _http_client_pool[client_key]
+
 def validate_environment() -> bool:
     """验证必要的环境变量是否已设置"""
-    api_key = os.getenv("DASHSCOPE_API_KEY")
-    if not api_key:
+    settings = get_settings()
+    if not settings.llm.api_key:
         logger.error("DASHSCOPE_API_KEY 环境变量未设置")
         return False
     
-    api_base = os.getenv("DASHSCOPE_API_BASE")
-    if not api_base:
+    if not settings.llm.api_base:
         logger.warning("DASHSCOPE_API_BASE 未设置，将使用默认值")
     
     return True
@@ -39,23 +58,26 @@ def create_llm():
     创建大语言模型实例
     使用 OpenAI 兼容模式调用阿里云通义千问
     """
-    api_key = os.getenv("DASHSCOPE_API_KEY")
-    api_base = os.getenv("DASHSCOPE_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    model_name = os.getenv("DASHSCOPE_MODEL", "qwen-max")
-    temperature = float(os.getenv("AGENT_TEMPERATURE", "0.1"))
+    settings = get_settings()
     
-    logger.info(f"初始化 LLM: model={model_name}, temperature={temperature}")
+    logger.info(
+        f"初始化 LLM: model={settings.llm.model}, "
+        f"temperature={settings.llm.temperature}"
+    )
+    
+    http_client = get_http_client()
     
     return OpenAI(
-        model="gpt-4",  # 兼容标识，实际使用 additional_kwargs 中的模型
-        temperature=temperature,
-        api_key=api_key,
-        api_base=api_base,
+        model="gpt-4",
+        temperature=settings.llm.temperature,
+        api_key=settings.llm.api_key,
+        api_base=settings.llm.api_base,
         additional_kwargs={
-            "model": model_name
+            "model": settings.llm.model
         },
-        timeout=30.0,  # 添加超时设置
-        max_retries=2  # 添加自动重试
+        timeout=float(settings.llm.timeout),
+        max_retries=settings.llm.max_retries,
+        http_client=http_client,
     )
 
 def create_memory(token_limit: int = None):
@@ -64,7 +86,8 @@ def create_memory(token_limit: int = None):
     限制 token 数量防止上下文溢出
     """
     if token_limit is None:
-        token_limit = int(os.getenv("AGENT_MEMORY_TOKEN_LIMIT", "8000"))
+        settings = get_settings()
+        token_limit = settings.memory.token_limit
     
     logger.info(f"创建记忆缓冲区，token 限制：{token_limit}")
     return ChatMemoryBuffer.from_defaults(token_limit=token_limit)
@@ -75,10 +98,12 @@ SYSTEM_PROMPT = """你是一个强大且多功能的自动化 AI 智能体助手
 
 核心规则：
 1. 【工具使用优先】如果用户的问题需要实时信息、新闻、计算或外部数据，必须调用相应工具，严禁自己编造。
-2. 【参数准确性】调用工具时确保参数准确完整。如果工具返回错误，分析原因后调整参数重试。
-3. 【操作确认】对于发送邮件等不可逆操作，执行前需向用户确认（除非用户明确说"直接发送"）。
-4. 【错误处理】工具调用失败时，向用户清晰解释原因并提供替代方案。
-5. 【专业回复】始终使用清晰、专业、友好的中文回答用户。
+2. 【严禁编造】对于天气、新闻、股票等实时信息，绝对不可以自己编造数据，必须调用 web_search 工具获取。
+3. 【参数准确性】调用工具时确保参数准确完整。如果工具返回错误，分析原因后调整参数重试。
+4. 【操作确认】对于发送邮件等不可逆操作，执行前需向用户确认（除非用户明确说"直接发送"）。
+5. 【错误处理】工具调用失败时，向用户清晰解释原因并提供替代方案。
+6. 【专业回复】始终使用清晰、专业、友好的中文回答用户。
+7. 【基于工具回答】必须严格根据工具返回的实际内容来回答用户，不要添加工具未提供的具体数据。
 
 可用工具：
 - web_search: 联网搜索实时信息、新闻、事实
@@ -100,28 +125,24 @@ def create_agent(session_id: str = "default") -> OpenAIAgent:
     Returns:
         配置好的 OpenAIAgent 实例
     """
-    # 验证环境变量
+    settings = get_settings()
+    
     if not validate_environment():
         raise ValueError("环境变量配置不完整，请检查 .env 文件")
     
-    # 创建 LLM 实例
     llm = create_llm()
-    
-    # 创建记忆实例
     memory = create_memory()
     
-    # 获取可用工具
     available_tools = ALL_TOOLS
     logger.info(f"加载 {len(available_tools)} 个工具")
     
-    # 组装 Agent
     agent = OpenAIAgent.from_tools(
         tools=available_tools,
         llm=llm,
         memory=memory,
-        verbose=True,
+        verbose=settings.agent.verbose,
         system_prompt=SYSTEM_PROMPT,
-        max_function_calls=int(os.getenv("AGENT_MAX_FUNCTION_CALLS", "10"))
+        max_function_calls=settings.agent.max_function_calls
     )
     
     logger.info(f"Agent 创建成功，session_id={session_id}")
