@@ -86,13 +86,26 @@ class RedisSettings(BaseSettings):
 
 class ServerSettings(BaseSettings):
     """服务器配置"""
-    host: str = Field(default="0.0.0.0", description="服务器监听地址", alias="SERVER_HOST")
+    host: str = Field(default="127.0.0.1", description="服务器监听地址", alias="SERVER_HOST")
     port: int = Field(default=8000, ge=1, le=65535, description="服务器端口", alias="SERVER_PORT")
     cors_origins: list[str] = Field(
         default=["http://localhost:7860", "http://127.0.0.1:7860", "http://localhost:3000", "http://127.0.0.1:3000"],
         description="允许的 CORS 源",
         alias="CORS_ORIGINS"
     )
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
+        populate_by_name = True
+
+
+class NotificationSettings(BaseSettings):
+    """通知工具配置"""
+    wecom_webhook_url: Optional[str] = Field(default=None, description="企业微信 Webhook URL", alias="WECOM_WEBHOOK_URL")
+    dingtalk_webhook_url: Optional[str] = Field(default=None, description="钉钉 Webhook URL", alias="DINGTALK_WEBHOOK_URL")
+    feishu_webhook_url: Optional[str] = Field(default=None, description="飞书 Webhook URL", alias="FEISHU_WEBHOOK_URL")
 
     class Config:
         env_file = ".env"
@@ -109,6 +122,7 @@ class Settings(BaseSettings):
     search: SearchSettings = SearchSettings()
     redis: RedisSettings = RedisSettings()
     server: ServerSettings = ServerSettings()
+    notification: NotificationSettings = NotificationSettings()
     
     app_name: str = Field(default="AI Agent Platform", description="应用名称", alias="APP_NAME")
     debug: bool = Field(default=False, description="调试模式", alias="DEBUG")

@@ -89,6 +89,19 @@ async def global_exception_handler(request: Request, exc: Exception):
         "path": request.url.path
     }
 
+@app.get("/", tags=["根路径"])
+async def root():
+    """
+    根路径欢迎页面
+    """
+    return {
+        "message": "欢迎使用 AI Agent Platform",
+        "version": "1.0.0",
+        "docs": "/api/docs",
+        "health": "/api/health",
+        "chat": "/api/chat"
+    }
+
 @app.get("/api/health", response_model=HealthResponse, tags=["健康检查"])
 async def health_check():
     """

@@ -71,44 +71,72 @@ def reset_chat(session_id):
 def get_welcome_message():
     """获取欢迎消息"""
     return """
-### 🤖 欢迎使用多功能 AI Agent 平台！
+## 🎯 欢迎使用 AI 智能体助手
 
-**我可以帮您：**
-- 🔍 **联网搜索**：查询实时信息、新闻、事实
-- 🧮 **数学计算**：执行复杂的数学运算
-- 📧 **发送邮件**：自动化邮件通知
+我是一个多功能 AI 助手，基于通义千问大模型构建，支持多种实用工具。
 
-**使用提示：**
-- 直接输入您的问题或请求
-- 需要计算时，我会自动使用计算器
-- 需要实时信息时，我会联网搜索
-- 点击"清空对话"可以清除记忆开始新对话
+### ✨ 核心功能
 
-**示例问题：**
-- "今天北京天气怎么样？"
-- "计算 (125 * 8) / 4 + sin(3.14)"
-- "帮我写一封邮件通知团队明天开会"
+| 功能 | 说明 | 示例 |
+|------|------|------|
+| 🔍 **联网搜索** | 查询实时信息、新闻、知识 | "今天北京天气怎么样？" |
+| 🧮 **数学计算** | 执行复杂的数学运算 | "计算 (125 * 8) / 4 + sin(3.14)" |
+| 📧 **邮件发送** | 自动化邮件通知 | "帮我写一封会议通知邮件" |
+
+### 💡 使用提示
+
+1. **直接提问** - 输入你的问题，我会自动判断是否需要使用工具
+2. **工具自动调用** - 需要实时信息或计算时，我会自动使用相应工具
+3. **清空对话** - 点击"清空对话"按钮可以清除记忆，开始新话题
+4. **流式输出** - 回答会逐字显示，无需等待完整生成
+
+### 🚀 快速开始
+
+试试以下问题：
+- "2024年奥运会在哪里举办？"
+- "计算 2的10次方乘以3.14"
+- "帮我写一封请假邮件"
+
+---
+*基于 LlamaIndex + Function Call 技术构建*
 """
 
 # 构建 Gradio 界面
 with gr.Blocks(
     theme=gr.themes.Soft(),
-    title="多功能 AI Agent 平台",
+    title="AI 智能体助手",
     css="""
     .gradio-container {
-        max-width: 1200px !important;
+        max-width: 1000px !important;
         margin: auto !important;
     }
     #chatbot {
-        height: 500px;
+        height: 600px;
         overflow: auto;
+    }
+    .main-title {
+        text-align: center;
+        margin-bottom: 10px;
+    }
+    .subtitle {
+        text-align: center;
+        color: #666;
+        margin-bottom: 20px;
     }
     """
 ) as demo:
     
     # 标题和说明
-    gr.Markdown("# 🤖 多功能自动化 AI 智能体平台")
-    gr.Markdown("支持联网搜索、数学计算、自动化邮件发送。基于 LlamaIndex + Function Call 构建。")
+    gr.Markdown(
+        """
+        <div class="main-title">
+        <h1>🤖 AI 智能体助手</h1>
+        </div>
+        <div class="subtitle">
+        支持联网搜索 · 数学计算 · 自动化通知 | 基于通义千问大模型
+        </div>
+        """
+    )
     
     # 状态管理
     session_id_state = gr.State(value=None)
@@ -116,14 +144,14 @@ with gr.Blocks(
     # 聊天显示区域
     chatbot_display = gr.Chatbot(
         elem_id="chatbot",
-        height=500,
+        height=600,
         show_copy_button=True,
-        placeholder="**对话将显示在这里**\n\n请输入消息开始对话..."
+        placeholder="💬 对话将显示在这里\n\n请输入消息开始对话..."
     )
     
     # 输入区域
     msg_input = gr.Textbox(
-        placeholder="输入消息... (Shift+Enter 换行)",
+        placeholder="输入你的问题... (Shift+Enter 换行，Enter 发送)",
         label="消息",
         lines=2,
         container=True
@@ -132,7 +160,7 @@ with gr.Blocks(
     # 按钮区域
     with gr.Row():
         send_btn = gr.Button("📤 发送", variant="primary", scale=2)
-        clear_btn = gr.Button("🗑️ 清空当前对话", variant="secondary", scale=1)
+        clear_btn = gr.Button("� 清空对话", variant="secondary", scale=1)
     
     # 状态信息
     status_text = gr.Markdown("")
