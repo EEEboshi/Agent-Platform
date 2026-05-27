@@ -200,6 +200,4 @@ GET http://localhost:8000/api/sessions
 4. 通知工具需要配置各平台的 Webhook URL
 5. `.env` 文件包含敏感信息，不要提交到代码仓库
 
-## 许可证
 
-MIT License
